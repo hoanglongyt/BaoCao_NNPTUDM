@@ -7,28 +7,14 @@ let jwt = require('jsonwebtoken');
 const { ChangePasswordValidator, validatedResult } = require('../utils/validator');
 let crypto = require('crypto')
 let { sendMail } = require('../utils/mailHandler')
-let cartModel = require('../schemas/carts');
-let mongoose = require('mongoose')
 
 router.post('/register', async function (req, res, next) {
-    let session = await mongoose.startSession();
-    session.startTransaction()
     try {
         let { username, password, email } = req.body;
-        let newUser = await userController.CreateAnUser(username, password, email,
-            "69b1265c33c5468d1c85aad8", session
-        )
-        let newCArt = new cartModel({
-            user: newUser._id
-        })
-        await newCArt.save({ session });
-        await newCArt.populate('user')
-        await session.commitTransaction();
-        await session.endSession()
-        res.send(newCArt)
+        let newUser = await userController.CreateAnUser(username, password, email, "69b1265c33c5468d1c85aad8");
+        // Cart creation will be handled separately using Sequelize models
+        res.send(newUser);
     } catch (error) {
-        await session.abortTransaction();
-        await session.endSession()
         res.status(404).send({
             message: error.message
         })
@@ -45,7 +31,7 @@ router.post('/login', async function (req, res, next) {
             })
             return;
         }
-        if (user.lockTime > Date.now()) {
+        if (user.lockTime && user.lockTime > Date.now()) {
             res.status(404).send({
                 message: "ban dang bi ban"
             })
@@ -54,9 +40,8 @@ router.post('/login', async function (req, res, next) {
         if (bcrypt.compareSync(password, user.password)) {
             user.loginCount = 0;
             await user.save()
-            //let priK = fs.readFileSync('privateKey.pem')
             let token = jwt.sign({
-                id: user._id
+                id: user.id
             }, 'secret', {
                 expiresIn: '1d'
             })
@@ -83,9 +68,11 @@ router.post('/login', async function (req, res, next) {
         })
     }
 })
+
 router.get('/me', CheckLogin, function (req, res, next) {
     res.send(req.user)
 })
+
 router.post('changepassword', CheckLogin, ChangePasswordValidator, validatedResult, async function (req, res, next) {
     let { oldpassword, newpassword } = req.body;
     let user = req.user;
@@ -97,6 +84,7 @@ router.post('changepassword', CheckLogin, ChangePasswordValidator, validatedResu
     }
     res.send(" sai password")
 })
+
 router.post('/logout', CheckLogin, function (req, res, next) {
     res.cookie("TOKEN_LOGIN_NNPTUD_C4", null, {
         maxAge: 0,
@@ -107,6 +95,7 @@ router.post('/logout', CheckLogin, function (req, res, next) {
         message: "da logout"
     })
 })
+
 router.post('/forgotpassword', async function (req, res, next) {
     let email = req.body.email;
     let user = await userController.GetAnUserByEmail(email);
@@ -121,6 +110,7 @@ router.post('/forgotpassword', async function (req, res, next) {
         message: "check mail"
     })
 })
+
 router.post('/resetpassword/:token', async function (req, res, next) {
     let token = req.params.token;
     let user = await userController.GetAnUserByToken(token);
@@ -138,4 +128,5 @@ router.post('/resetpassword/:token', async function (req, res, next) {
         })
     }
 })
+
 module.exports = router
